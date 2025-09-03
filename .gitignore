@@ -34,4 +34,4 @@ build/
 
 ### confidentials ###
 /tokens
-*.json
+*/credentials.json
