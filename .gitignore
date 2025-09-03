@@ -35,4 +35,6 @@ build/
 ### confidentials ###
 /tokens
 */credentials.json
+*/calculadora_de_retenciones.xlsx
 credentials.json
+calculadora_de_retenciones.xlsx
