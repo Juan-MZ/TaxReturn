@@ -1,4 +1,4 @@
-package com.construmedicis.taxreturn.config;
+package com.construmedicis.taxreturn.utils.configs;
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
@@ -16,10 +16,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.FileReader;
-import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.file.Paths;
-import java.security.GeneralSecurityException;
 import java.util.Collections;
 import java.util.List;
 
@@ -64,7 +62,10 @@ public class GmailConfig {
             // Servidor local para manejar el callback de OAuth2
             LocalServerReceiver receiver = new LocalServerReceiver.Builder().setPort(8888).build();
 
-            return new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
+            // Usar navegador del sistema directamente
+            AuthorizationCodeInstalledApp app = new AuthorizationCodeInstalledApp(flow, receiver, new AuthorizationCodeInstalledApp.DefaultBrowser());
+
+            return app.authorize("user");
         }
     }
 }

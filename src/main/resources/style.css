@@ -1,0 +1,11 @@
+.primary-button {
+    -fx-background-color: #0078D7;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 8px 16px;
+    -fx-background-radius: 6px;
+}
+
+.primary-button:hover {
+    -fx-background-color: #005a9e;
+}
