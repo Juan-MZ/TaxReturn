@@ -1,6 +1,7 @@
 package com.construmedicis.taxreturn.extraction.services;
 
 import com.google.api.services.gmail.Gmail;
+import com.construmedicis.taxreturn.utils.auth.GmailAuthService;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.MessagePart;
@@ -17,16 +18,25 @@ import java.util.*;
 @Service
 public class ExtractionService implements IExctractionService {
 
-    private final Gmail gmail;
+    private final GmailAuthService gmailAuthService;
 
-    // Inyecta la instancia de Gmail (configurada con OAuth2 en otra clase)
-    public ExtractionService(Gmail gmail) {
-        this.gmail = gmail;
+    // Inyecta el gestor de autenticación para poder trabajar aun cuando no hay
+    // credenciales
+    public ExtractionService(GmailAuthService gmailAuthService) {
+        this.gmailAuthService = gmailAuthService;
     }
 
     @Override
     public void extractInvoices(String userId, String query, String outputDir) throws Exception {
-        // Buscar mensajes con la query (ej: "label:facturas after:2025/08/01 before:2025/08/31")
+        // Buscar mensajes con la query (ej: "label:facturas after:2025/08/01
+        // before:2025/08/31")
+        Gmail gmail = gmailAuthService.getGmail();
+
+        if (gmail == null) {
+            throw new IllegalStateException(
+                    "No autenticado con Gmail. Inicie el proceso de autenticación y vuelva a intentarlo.");
+        }
+
         ListMessagesResponse response = gmail.users().messages().list(userId)
                 .setQ(query)
                 .execute();
@@ -51,6 +61,11 @@ public class ExtractionService implements IExctractionService {
     }
 
     private void saveAttachment(String userId, String messageId, MessagePart part, String outputDir) throws Exception {
+        Gmail gmail = gmailAuthService.getGmail();
+        if (gmail == null) {
+            throw new IllegalStateException(
+                    "No autenticado con Gmail. Inicie el proceso de autenticación y vuelva a intentarlo.");
+        }
         String filename = part.getFilename();
         String attId = part.getBody().getAttachmentId();
         MessagePartBody attachPart = gmail.users().messages().attachments()
@@ -87,7 +102,7 @@ public class ExtractionService implements IExctractionService {
                 outFile.getParentFile().mkdirs();
 
                 try (InputStream in = zipFile.getInputStream(entry);
-                     OutputStream out = new FileOutputStream(outFile)) {
+                        OutputStream out = new FileOutputStream(outFile)) {
                     in.transferTo(out);
                 }
                 System.out.println("Extraído: " + outFile.getAbsolutePath());
