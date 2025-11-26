@@ -58,7 +58,8 @@ public class MainUI extends Application {
         stage.setTitle("📊 TaxReturn - Gestor de Facturas");
         stage.setScene(scene);
 
-        // Ensure that closing the JavaFX window also stops the Spring context and exits the JVM
+        // Ensure that closing the JavaFX window also stops the Spring context and exits
+        // the JVM
         stage.setOnCloseRequest(ev -> {
             try {
                 if (springContext != null) {
@@ -113,7 +114,8 @@ public class MainUI extends Application {
 
     @Override
     public void stop() throws Exception {
-        // This is called when JavaFX shuts down. Make sure we also stop Spring and the JVM.
+        // This is called when JavaFX shuts down. Make sure we also stop Spring and the
+        // JVM.
         try {
             if (springContext != null) {
                 springContext.close();
@@ -255,7 +257,8 @@ public class MainUI extends Application {
         });
 
         authPane.getChildren().addAll(lblTitulo, new Separator(), lblStatus, lblInfo, new HBox(10, btnUpload, btnStart),
-                txtAuthUrl, new HBox(10, btnOpenManual, btnCopy), txtAuthCode, btnFinalize, new Separator(), btnOpenPdf);
+                txtAuthUrl, new HBox(10, btnOpenManual, btnCopy), txtAuthCode, btnFinalize, new Separator(),
+                btnOpenPdf);
 
         Tab tab = new Tab("Autenticación", authPane);
         tab.setClosable(false);
@@ -305,7 +308,7 @@ public class MainUI extends Application {
         return tab;
     }
 
-        private void handleDownload(DatePicker fechaInicio, DatePicker fechaFin, TextField txtEtiqueta,
+    private void handleDownload(DatePicker fechaInicio, DatePicker fechaFin, TextField txtEtiqueta,
             TextField txtRutaDescarga, Stage stage) {
         try {
             if (fechaInicio.getValue() == null || fechaFin.getValue() == null ||

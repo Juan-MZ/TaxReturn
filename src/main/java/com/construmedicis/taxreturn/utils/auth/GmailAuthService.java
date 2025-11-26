@@ -66,11 +66,13 @@ public class GmailAuthService {
             try {
                 boolean restored = tryRestoreStoredCredential();
                 if (restored) {
-                    System.out.println("GmailAuthService: restored credential from tokens, skipping authentication flow");
+                    System.out
+                            .println("GmailAuthService: restored credential from tokens, skipping authentication flow");
                     return;
                 }
             } catch (Exception ex) {
-                System.out.println("GmailAuthService: error while trying to restore stored credential: " + ex.getMessage());
+                System.out.println(
+                        "GmailAuthService: error while trying to restore stored credential: " + ex.getMessage());
             }
 
             startAuthentication();
@@ -88,9 +90,9 @@ public class GmailAuthService {
         // 1) If credentials.json exists, create a flow and load the stored credential
         // using the FileDataStoreFactory (preferred — allows refreshing the token).
         // 2) If credentials.json is missing but there is a stored token file under
-        //    tokens/StoredCredential/user with a still-valid access token, we can
-        //    restore a lightweight credential (read-only) and use it to create the
-        //    Gmail client (won't be able to refresh without client secrets).
+        // tokens/StoredCredential/user with a still-valid access token, we can
+        // restore a lightweight credential (read-only) and use it to create the
+        // Gmail client (won't be able to refresh without client secrets).
         Path credPath = Paths.get(credentialsFilePath);
 
         var httpTransport = GoogleNetHttpTransport.newTrustedTransport();
@@ -116,51 +118,51 @@ public class GmailAuthService {
             boolean usable = false;
             if (credential != null) {
                 if (credential.getAccessToken() != null) {
-                // if there is an access token, consider it usable (we'll still try to
-                // refresh if it's near expiry)
-                usable = true;
-            }
+                    // if there is an access token, consider it usable (we'll still try to
+                    // refresh if it's near expiry)
+                    usable = true;
+                }
 
                 Long expiresIn = credential.getExpiresInSeconds();
-            if (expiresIn != null && expiresIn <= 60) {
-                // near expiry — try to refresh using stored refresh token
-                try {
-                    boolean refreshed = credential.refreshToken();
-                    if (refreshed) {
-                        usable = true;
+                if (expiresIn != null && expiresIn <= 60) {
+                    // near expiry — try to refresh using stored refresh token
+                    try {
+                        boolean refreshed = credential.refreshToken();
+                        if (refreshed) {
+                            usable = true;
+                        }
+                    } catch (Exception ex) {
+                        // refresh failed — fall back to interactive flow
+                        ex.printStackTrace();
+                        usable = false;
                     }
-                } catch (Exception ex) {
-                    // refresh failed — fall back to interactive flow
-                    ex.printStackTrace();
-                    usable = false;
                 }
-            }
 
                 // If we had no expiry data but had a refresh token, try to refresh now
                 if (!usable && credential.getRefreshToken() != null) {
-                try {
-                    boolean refreshed = credential.refreshToken();
-                    if (refreshed) {
-                        usable = true;
+                    try {
+                        boolean refreshed = credential.refreshToken();
+                        if (refreshed) {
+                            usable = true;
+                        }
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        usable = false;
                     }
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    usable = false;
                 }
-            }
 
                 if (usable) {
-                Gmail gmail = new Gmail.Builder(httpTransport, JSON_FACTORY, credential)
-                        .setApplicationName(applicationName)
-                        .build();
+                    Gmail gmail = new Gmail.Builder(httpTransport, JSON_FACTORY, credential)
+                            .setApplicationName(applicationName)
+                            .build();
 
-                gmailRef.set(gmail);
-                status.set(AuthStatus.AUTHENTICATED);
-                // cleanup any pending flow or URL reference
-                lastFlowRef.set(null);
-                lastAuthUrl.set(null);
-                return true;
-            }
+                    gmailRef.set(gmail);
+                    status.set(AuthStatus.AUTHENTICATED);
+                    // cleanup any pending flow or URL reference
+                    lastFlowRef.set(null);
+                    lastAuthUrl.set(null);
+                    return true;
+                }
             }
         }
 
@@ -184,7 +186,8 @@ public class GmailAuthService {
                     accessToken = mTok.group(1);
                 }
 
-                java.util.regex.Matcher mExp = java.util.regex.Pattern.compile("\"expiration_time_millis\"\s*:\s*(\\d+)")
+                java.util.regex.Matcher mExp = java.util.regex.Pattern
+                        .compile("\"expiration_time_millis\"\s*:\s*(\\d+)")
                         .matcher(content);
                 if (mExp.find()) {
                     try {
@@ -207,7 +210,8 @@ public class GmailAuthService {
                 }
 
                 if (valid) {
-                    Credential credential = new Credential(com.google.api.client.auth.oauth2.BearerToken.authorizationHeaderAccessMethod())
+                    Credential credential = new Credential(
+                            com.google.api.client.auth.oauth2.BearerToken.authorizationHeaderAccessMethod())
                             .setAccessToken(accessToken);
 
                     httpTransport = GoogleNetHttpTransport.newTrustedTransport();
@@ -261,11 +265,14 @@ public class GmailAuthService {
         try {
             boolean restored = tryRestoreStoredCredential();
             if (restored) {
-                System.out.println("GmailAuthService: restored credential from tokens in startAuthentication, skipping interactive flow");
+                System.out.println(
+                        "GmailAuthService: restored credential from tokens in startAuthentication, skipping interactive flow");
                 return;
             }
         } catch (Exception ex) {
-            System.out.println("GmailAuthService: error while trying to restore stored credential in startAuthentication: " + ex.getMessage());
+            System.out.println(
+                    "GmailAuthService: error while trying to restore stored credential in startAuthentication: "
+                            + ex.getMessage());
         }
 
         status.set(AuthStatus.PENDING);
