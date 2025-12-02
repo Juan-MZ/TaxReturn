@@ -20,14 +20,17 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.lang.reflect.Method;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.function.Consumer;
 
 @Service
 public class ConversionService implements IConversionService {
 
     private static final String TEMPLATE_PATH = "calculadora_de_retenciones.xlsx"; // tu plantilla
-    private static final String SHEET_NAME = "RETENCION";
+    private static final String SHEET_NAME = "RETENCION 2025";
     private static final String TOTALS_LABEL = "TOTALES"; // texto que identifica la fila de totales
 
     @Override
@@ -44,7 +47,7 @@ public class ConversionService implements IConversionService {
         }
 
         try (FileInputStream fis = new FileInputStream(excelFile);
-             Workbook workbook = new XSSFWorkbook(fis)) {
+                Workbook workbook = new XSSFWorkbook(fis)) {
 
             Sheet sheet = workbook.getSheet(SHEET_NAME);
             if (sheet == null) {
@@ -103,72 +106,277 @@ public class ConversionService implements IConversionService {
         }
 
         // --- Base imponible ---
-        double baseImponible = Double.parseDouble(facturaDoc.getElementsByTagName("cbc:LineExtensionAmount").item(0).getTextContent());
+        double baseImponible = Double
+                .parseDouble(facturaDoc.getElementsByTagName("cbc:LineExtensionAmount").item(0).getTextContent());
 
         // --- Valor total ---
         String valorTotal = facturaDoc.getElementsByTagName("cbc:PayableAmount").item(0).getTextContent();
 
-        // ==============================
-        // Buscar la fila de TOTALES
-        // ==============================
-        int totalsRowIndex = findTotalsRow(sheet);
+        XSSFSheet xssfSheet = (XSSFSheet) sheet;
+        XSSFTable table = xssfSheet.getTables().get(0); // tu tabla principal
 
-        // ==============================
-        // Insertar justo antes de TOTALES
-        // ==============================
-        sheet.shiftRows(totalsRowIndex, sheet.getLastRowNum(), 1);
+        Workbook workbook = sheet.getWorkbook();
+        CellStyle dateStyle = getDateStyle(workbook);
 
-        Row newRow = sheet.createRow(totalsRowIndex);
-
-        // ==============================
-        // Escribir valores en la nueva fila
-        // ==============================
-        newRow.createCell(1).setCellValue(razonSocialProveedor);
-        newRow.createCell(2).setCellValue(nitProveedor);
-        newRow.createCell(4).setCellValue(fecha);
-        newRow.createCell(5).setCellValue(numeroFactura);
-        newRow.createCell(6).setCellValue(Double.parseDouble(valorTotal));
-        newRow.createCell(7).setCellValue(baseImponible);
-        newRow.createCell(8).setCellValue("Compras generales (declarantes)");
-        newRow.createCell(12).setCellValue("compras");
-        newRow.createCell(18).setCellValue(retIca);
-        newRow.createCell(19).setCellValue(retFuente);
-
-
-        expandTable(sheet, totalsRowIndex);
+        insertRowInTableOnly(xssfSheet, table, newRow -> {
+            writeCellWithStyle(newRow, 1, razonSocialProveedor, null);
+            writeCellWithStyle(newRow, 2, nitProveedor, null);
+            writeDateCell(newRow, 4, fecha, dateStyle);
+            writeCellWithStyle(newRow, 5, numeroFactura, null);
+            writeCellWithStyle(newRow, 6, Double.parseDouble(valorTotal), null);
+            writeCellWithStyle(newRow, 7, baseImponible, null);
+            writeCellWithStyle(newRow, 8, "Compras generales (declarantes)", null);
+        });
     }
 
-    private int findTotalsRow(Sheet sheet) {
-        for (Row row : sheet) {
-            Cell firstCell = row.getCell(1); // columna B (índice 1)
-            if (firstCell != null && TOTALS_LABEL.equalsIgnoreCase(firstCell.getStringCellValue().trim())) {
-                return row.getRowNum();
+    private void writeCellWithStyle(Row row, int colIndex, String value, Row styleSource) {
+        Cell cell = row.createCell(colIndex);
+        cell.setCellValue(value);
+        if (styleSource != null) {
+            Cell src = styleSource.getCell(colIndex);
+            if (src != null && src.getCellStyle() != null) {
+                cell.setCellStyle(src.getCellStyle());
             }
         }
-        throw new IllegalStateException("No se encontró la fila de TOTALES en la hoja " + sheet.getSheetName());
     }
 
-    private void expandTable(Sheet sheet, int newRowIndex) {
-        if (sheet instanceof XSSFSheet xssfSheet) {
-            for (XSSFTable table : xssfSheet.getTables()) {
-                CellReference startRef = table.getStartCellReference();
-                CellReference endRef = table.getEndCellReference();
+    private void writeCellWithStyle(Row row, int colIndex, double value, Row styleSource) {
+        Cell cell = row.createCell(colIndex);
+        cell.setCellValue(value);
+        if (styleSource != null) {
+            Cell src = styleSource.getCell(colIndex);
+            if (src != null && src.getCellStyle() != null) {
+                cell.setCellStyle(src.getCellStyle());
+            }
+        }
+    }
 
-                if (newRowIndex >= startRef.getRow()) {
-                    // Nuevo rango desde inicio de tabla hasta la nueva fila
-                    AreaReference newArea = new AreaReference(
-                            new CellReference(startRef.getRow(), startRef.getCol()),
-                            new CellReference(newRowIndex, endRef.getCol()),
-                            sheet.getWorkbook().getSpreadsheetVersion()
-                    );
+    private void insertRowInTableOnly(
+            XSSFSheet sheet,
+            XSSFTable table,
+            Consumer<Row> rowFiller) {
 
-                    // Actualizar rango en el XML
-                    table.getCTTable().setRef(newArea.formatAsString());
+        CellReference start = table.getStartCellReference();
+        CellReference end = table.getEndCellReference();
+        int lastTableCol = end.getCol();
 
-                    // Actualizar también el área en el objeto de Java
-                    table.setArea(newArea);
+        // Encontrar la fila de TOTALES en la hoja
+        int totalsRowIndex = findTotalsRow(sheet);
+        if (totalsRowIndex == -1) {
+            throw new IllegalStateException("No se encontró la fila de TOTALES");
+        }
+
+        // Insertar SIEMPRE una fila ANTES de la fila de totales
+        int newRowIndex = totalsRowIndex;
+
+        // 1. Copiar fila de totales a la fila siguiente (manual, sin shiftRows)
+        Row totalsRow = sheet.getRow(totalsRowIndex);
+        Row newTotalsRow = sheet.createRow(totalsRowIndex + 1);
+
+        copyRow(sheet, totalsRow, newTotalsRow);
+
+        // 2. Limpiar la fila de totales (queda vacía la original)
+        clearRow(totalsRow);
+
+        // 3. Usar la fila original de totales como nueva fila de datos
+        Row newRow = totalsRow;
+
+        // Fila anterior a la fila nueva (para copiar estilo)
+        Row styleSource = sheet.getRow(newRowIndex - 1);
+
+        // Llenar la fila con los datos
+        rowFiller.accept(newRow);
+
+        // Copiar estilos
+        if (styleSource != null) {
+            for (int c = 0; c <= lastTableCol; c++) {
+                Cell src = styleSource.getCell(c);
+                Cell dst = newRow.getCell(c);
+                if (src != null && dst != null) {
+                    dst.setCellStyle(src.getCellStyle());
+                }
+            }
+        }
+
+        // Expandir la tabla evitando incluir la fila de totales
+        AreaReference newArea = new AreaReference(
+                start,
+                new CellReference(newRowIndex, lastTableCol),
+                sheet.getWorkbook().getSpreadsheetVersion());
+
+        // ⬅️ OBLIGATORIO: actualizar área de la tabla
+        table.setArea(newArea);
+
+        // --- asegurar AutoFilter dentro de CTTable ---
+        org.openxmlformats.schemas.spreadsheetml.x2006.main.CTTable ctTable = table.getCTTable();
+        String ref = newArea.formatAsString();
+
+        if (ctTable.getAutoFilter() == null) {
+            ctTable.addNewAutoFilter();
+        }
+
+        ctTable.getAutoFilter().setRef(ref);
+        ctTable.setHeaderRowCount(1);
+
+        // --- actualizar de forma segura el área de la tabla (evitar que Excel quite la
+        // tabla) ---
+
+        // newArea: AreaReference ya calculada (desde start hasta newEndRow,newEndCol)
+        String newRef = newArea.formatAsString();
+
+        // 1) actualizar la referencia principal del CTTable
+        ctTable.setRef(newRef);
+
+        // 2) actualizar AutoFilter dentro del CTTable si existe
+        try {
+            if (ctTable.getAutoFilter() != null) {
+                ctTable.getAutoFilter().setRef(newRef);
+            }
+        } catch (Exception ignore) {
+            /* defensivo */ }
+
+        // 3) garantizar que tableColumns tenga la cuenta y columnas correctas
+        // startCol y colCount ya definidos antes
+        int startCol = start.getCol();
+        int endCol = newArea.getLastCell().getCol();
+        int colCount = endCol - startCol + 1;
+
+        // obtener (o crear) el nodo tableColumns de forma compatible
+        org.openxmlformats.schemas.spreadsheetml.x2006.main.CTTableColumns ctCols = ctTable.getTableColumns();
+        if (ctCols == null) {
+            ctCols = ctTable.addNewTableColumns();
+        }
+
+        // --- setCount: intentar con long, si no existe, con BigInteger ---
+        try {
+            // intentar método setCount(long)
+            Method setCountLong = ctCols.getClass().getMethod("setCount", long.class);
+            setCountLong.invoke(ctCols, (long) colCount);
+        } catch (NoSuchMethodException nsme) {
+            try {
+                // intentar método setCount(BigInteger)
+                Method setCountBI = ctCols.getClass().getMethod("setCount", BigInteger.class);
+                setCountBI.invoke(ctCols, BigInteger.valueOf(colCount));
+            } catch (Exception e) {
+                throw new RuntimeException("No se pudo invocar setCount en CTTableColumns", e);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Error invocando setCount(long) en CTTableColumns", e);
+        }
+
+        // eliminar entradas existentes y recrearlas (más seguro que intentar editarlas)
+        while (ctCols.sizeOfTableColumnArray() > 0) {
+            ctCols.removeTableColumn(0);
+        }
+
+        // fila de encabezado (asumo que start.getRow() es la fila de headers)
+        Row headerRow = sheet.getRow(start.getRow());
+        for (int i = 0; i < colCount; i++) {
+            org.openxmlformats.schemas.spreadsheetml.x2006.main.CTTableColumn newCol = ctCols.addNewTableColumn();
+
+            // setId: intentar con long, si no existe, con BigInteger
+            try {
+                Method setIdLong = newCol.getClass().getMethod("setId", long.class);
+                setIdLong.invoke(newCol, (long) (i + 1));
+            } catch (NoSuchMethodException nsme) {
+                try {
+                    Method setIdBI = newCol.getClass().getMethod("setId", BigInteger.class);
+                    setIdBI.invoke(newCol, BigInteger.valueOf(i + 1));
+                } catch (Exception e) {
+                    throw new RuntimeException("No se pudo invocar setId en CTTableColumn", e);
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Error invocando setId(long) en CTTableColumn", e);
+            }
+
+            String headerName = null;
+            if (headerRow != null) {
+                Cell h = headerRow.getCell(startCol + i);
+                if (h != null) {
+                    if (h.getCellType() == CellType.STRING) {
+                        headerName = h.getStringCellValue();
+                    } else {
+                        headerName = h.toString();
+                    }
+                }
+            }
+            if (headerName == null || headerName.isBlank()) {
+                headerName = "Column" + (i + 1);
+            }
+            newCol.setName(headerName);
+        }
+
+    }
+
+    private void clearRow(Row row) {
+        for (Cell cell : row) {
+            cell.setBlank();
+        }
+    }
+
+    private void copyRow(Sheet sheet, Row src, Row dest) {
+        for (int i = 0; i < src.getLastCellNum(); i++) {
+            Cell oldCell = src.getCell(i);
+            if (oldCell != null) {
+                Cell newCell = dest.createCell(i);
+                newCell.setCellStyle(oldCell.getCellStyle());
+
+                switch (oldCell.getCellType()) {
+                    case STRING:
+                        newCell.setCellValue(oldCell.getStringCellValue());
+                        break;
+                    case NUMERIC:
+                        newCell.setCellValue(oldCell.getNumericCellValue());
+                        break;
+                    case BOOLEAN:
+                        newCell.setCellValue(oldCell.getBooleanCellValue());
+                        break;
+                    case FORMULA:
+                        newCell.setCellFormula(oldCell.getCellFormula());
+                        break;
+                    default:
+                        break;
                 }
             }
         }
     }
+
+    private int findTotalsRow(Sheet sheet) {
+        for (Row row : sheet) {
+            for (Cell cell : row) {
+                if (cell.getCellType() == CellType.STRING &&
+                        cell.getStringCellValue().trim().equalsIgnoreCase(TOTALS_LABEL)) {
+                    return row.getRowNum();
+                }
+            }
+        }
+        return -1;
+    }
+
+    private CellStyle getDateStyle(Workbook workbook) {
+        CreationHelper creationHelper = workbook.getCreationHelper();
+        CellStyle dateStyle = workbook.createCellStyle();
+        dateStyle.setDataFormat(creationHelper.createDataFormat().getFormat("d/MM/yyyy"));
+        return dateStyle;
+    }
+
+    private void writeDateCell(Row row, int colIndex, String dateStr, CellStyle style) {
+        try {
+            // convertir yyyy-MM-dd → java.util.Date
+            java.util.Date date = java.sql.Date.valueOf(dateStr);
+
+            Cell cell = row.createCell(colIndex);
+            cell.setCellValue(date);
+
+            if (style != null) {
+                cell.setCellStyle(style);
+            }
+
+        } catch (Exception e) {
+            // Si ocurre algo, escribe como texto
+            Cell cell = row.createCell(colIndex);
+            cell.setCellValue(dateStr);
+        }
+    }
+
 }
